@@ -10,9 +10,13 @@
 
 namespace mat {
 
+namespace exceptions {
+    struct NoMatch {};
+}
+
 namespace detail {
 
-class Any {};
+class Wildcard {};
 class Capture {};
 
 template <typename... Ts>
@@ -28,7 +32,7 @@ class Variant {};
 
 }
 
-const detail::Any _ = detail::Any();
+const detail::Wildcard _ = detail::Wildcard();
 const detail::Capture cpt = detail::Capture();
 
 template <typename... Ts>
@@ -37,9 +41,7 @@ inline detail::Destructure<Ts...> ds(Ts... ts) {
 }
 
 template <typename T>
-inline detail::Variant<T> var() {
-    return detail::Variant<T>();
-}
+inline detail::Variant<T> var = detail::Variant<T>();
 
 namespace detail {
 
@@ -67,9 +69,9 @@ public:
 };
 
 template <>
-class Pattern<Any> {
+class Pattern<Wildcard> {
 public:
-    Pattern(Any) {}
+    Pattern(Wildcard) {}
     
     template <typename U>
     bool matches(U) const {
@@ -107,7 +109,7 @@ class Pattern<Destructure<Ts...>> {
         if (!accum) return false;
         if constexpr (I < std::tuple_size_v<T1>) {
             if constexpr (
-                    std::is_same_v<std::tuple_element_t<I, T1>, Any> ||
+                    std::is_same_v<std::tuple_element_t<I, T1>, Wildcard> ||
                     std::is_same_v<std::tuple_element_t<I, T1>, Capture>) {
                 return tup_comp<I+1, T1, T2>(t1, t2, accum);
             } else {
@@ -158,7 +160,7 @@ inline detail::Pattern<T> pattern(const T& expr) {
     return detail::Pattern(std::forward<const T>(expr));
 }
 
-inline detail::Pattern<detail::Any> pattern(detail::Any) {
+inline detail::Pattern<detail::Wildcard> pattern(detail::Wildcard) {
     return detail::Pattern(_);
 }
 
@@ -229,7 +231,7 @@ public:
     }
 };
 
-template <std::regular T>
+template <typename T>
 class Match {
     const T& mat;
 public:
@@ -241,7 +243,7 @@ public:
             return arm(mat);
         } else {
             if constexpr (sizeof...(arms) == 0) {
-                std::terminate();
+                throw exceptions::NoMatch();
             } else {
                 return operator()(std::forward<Arms>(arms)...);
             }
@@ -252,7 +254,7 @@ public:
 
 }
 
-template <std::regular T>
+template <typename T>
 inline detail::Match<T> match(const T& mat) {
     return detail::Match(std::forward<const T>(mat));
 }

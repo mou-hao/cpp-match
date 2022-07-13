@@ -6,6 +6,7 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <variant>
 
 namespace mat {
 
@@ -182,12 +183,26 @@ template <typename F, typename... Ts>
 class DsArm : public ArmBase<Pattern<Destructure<Ts...>>> {
     using P = Pattern<Destructure<Ts...>>;
     F f;
+
+    template <std::size_t I, typename T1, typename T2, typename L>
+    decltype(auto) ds_bind(const T2& t2, L l) const {
+        if constexpr (I < std::tuple_size_v<T1>) {
+            if constexpr (std::is_same_v<std::tuple_element_t<I, T1>, Capture>) {
+                auto newl = std::bind_front(l, std::get<I>(t2));
+                return ds_bind<I+1, T1, T2, decltype(newl)>(t2, newl);
+            } else {
+                return ds_bind<I+1, T1, T2, L>(t2, l);
+            }
+        } else {
+            return l;
+        }
+    }
 public:
     DsArm(const P& pat_, F&& f_) : ArmBase<P>{pat_}, f{f_} {}
 
     template <typename T>
     decltype(auto) operator()(const T& mat) const {
-        return f();
+        return ds_bind<0, std::tuple<Ts...>, T, F>(mat, f)();
     }
 };
 

@@ -19,11 +19,12 @@ template <typename... Ts>
 class Destructure {
     std::tuple<Ts...> ts;
 public:
-    constexpr Destructure(Ts... ts_) : ts{ts_...} {}
-    constexpr std::tuple<Ts...>& get_tuple() {
-        return ts;
-    };
+    Destructure(Ts... ts_) : ts{ts_...} {}
+    std::tuple<Ts...>& get_tuple() { return ts; };
 };
+
+template <typename T>
+class Variant {};
 
 }
 
@@ -31,8 +32,13 @@ const detail::Any _ = detail::Any();
 const detail::Capture cpt = detail::Capture();
 
 template <typename... Ts>
-constexpr detail::Destructure<Ts...> ds(Ts... ts) {
+inline detail::Destructure<Ts...> ds(Ts... ts) {
     return detail::Destructure(std::forward<Ts>(ts)...);
+}
+
+template <typename T>
+inline detail::Variant<T> var() {
+    return detail::Variant<T>();
 }
 
 namespace detail {
@@ -113,7 +119,7 @@ class Pattern<Destructure<Ts...>> {
     }
 
 public:
-    Pattern(Destructure<Ts...> ds) : tup{std::move(ds.get_tuple())} {}
+    Pattern(Destructure<Ts...>&& ds) : tup{std::move(ds.get_tuple())} {}
 
     template <typename U>
     bool matches(const U& mat) const {
@@ -126,6 +132,22 @@ public:
     template <typename F>
     decltype(auto) operator=(F&& f) const {
         return DsArm<F, Ts...>(*this, std::forward<F>(f));
+    }
+};
+
+template <typename T>
+class Pattern<Variant<T>> {
+public:
+    Pattern(Variant<T>) {}
+
+    template <typename U>
+    bool matches(const U& mat) const {
+        return std::holds_alternative<T>(mat);
+    }
+
+    template <typename F>
+    decltype(auto) operator=(F&& f) const {
+        return Arm(*this, [=](auto& mat) { return f(std::get<T>(mat)); });
     }
 };
 
@@ -197,6 +219,7 @@ class DsArm : public ArmBase<Pattern<Destructure<Ts...>>> {
             return l;
         }
     }
+
 public:
     DsArm(const P& pat_, F&& f_) : ArmBase<P>{pat_}, f{f_} {}
 
@@ -208,7 +231,7 @@ public:
 
 template <std::regular T>
 class Match {
-    const T mat;
+    const T& mat;
 public:
     Match(const T& mat_) : mat{mat_} {}
 

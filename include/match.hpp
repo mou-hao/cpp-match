@@ -28,7 +28,6 @@ class Destructure {
 
  public:
   Destructure(Ts... ts_) : ts{ts_...} {}
-  Destructure(Ts&&... ts_) : ts{std::move(ts_)...} {}
   std::tuple<Ts...>& get_tuple() { return ts; };
 };
 
@@ -42,7 +41,7 @@ const detail::Capture cpt = detail::Capture();
 
 template <typename... Ts>
 inline detail::Destructure<Ts...> ds(Ts&&... ts) {
-  return detail::Destructure(std::forward<Ts>(ts)...);
+  return detail::Destructure<Ts...>(std::forward<Ts>(ts)...);
 }
 
 template <typename T>
@@ -64,7 +63,7 @@ class Pattern {
   const T expr;
 
  public:
-  Pattern(const T& expr_) : expr{expr_} {}
+  Pattern(T expr_) : expr{expr_} {}
 
   template <std::equality_comparable_with<T> U>
   bool matches(const U& mat) const {
@@ -117,8 +116,8 @@ class Pattern<Destructure<Ts...>> {
   bool tup_comp(const T1& t1, const T2& t2, bool accum) const {
     if (!accum) return false;
     if constexpr (I < std::tuple_size_v<T1>) {
-      if constexpr (std::is_same_v<std::tuple_element_t<I, T1>, Wildcard> ||
-                    std::is_same_v<std::tuple_element_t<I, T1>, Capture>) {
+      if constexpr (std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>, Wildcard> ||
+                    std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>, Capture>) {
         return tup_comp<I + 1, T1, T2>(t1, t2, accum);
       } else {
         return tup_comp<I + 1, T1, T2>(t1, t2,
@@ -194,8 +193,8 @@ decltype(auto) operator|(const Pattern<T1>& p1, const Pattern<T2>& p2) {
 }  // namespace detail
 
 template <typename T>
-inline detail::Pattern<T> pattern(const T&& expr) {
-  return detail::Pattern(std::forward<const T>(expr));
+inline detail::Pattern<T> pattern(T&& expr) {
+  return detail::Pattern(std::forward<T>(expr));
 }
 
 inline detail::Pattern<detail::Wildcard> pattern(detail::Wildcard) {
@@ -214,6 +213,11 @@ template <typename... Ts>
 inline detail::Pattern<detail::Destructure<Ts...>> pattern(
     detail::Destructure<Ts...>&& ds) {
   return detail::Pattern(std::forward<detail::Destructure<Ts...>>(ds));
+}
+
+template <typename T>
+inline detail::Pattern<detail::Variant<T>> pattern(detail::Variant<T> var) {
+  return detail::Pattern(var);
 }
 
 namespace detail {
@@ -252,7 +256,7 @@ class DsArm : public ArmBase<Pattern<Destructure<Ts...>>> {
   template <std::size_t I, typename T1, typename T2, typename L>
   decltype(auto) ds_bind(const T2& t2, L l) const {
     if constexpr (I < std::tuple_size_v<T1>) {
-      if constexpr (std::is_same_v<std::tuple_element_t<I, T1>, Capture>) {
+      if constexpr (std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>, Capture>) {
         auto newl = std::bind_front(l, std::get<I>(t2));
         return ds_bind<I + 1, T1, T2, decltype(newl)>(t2, newl);
       } else {
@@ -282,7 +286,7 @@ class AltArm {
     if (head.matches(mat)) {
       return true;
     } else {
-      if constexpr (std::is_same_v<T, Nil>) {
+      if constexpr (std::is_same_v<std::decay_t<T>, Nil>) {
         return false;
       } else {
         return altp_matches(mat, tail.get_head(), tail.get_tail());
@@ -295,7 +299,7 @@ class AltArm {
     if (head.matches(mat)) {
       return (head = f)(mat);
     } else {
-      if constexpr (std::is_same_v<T, Nil>) {
+      if constexpr (std::is_same_v<std::decay_t<T>, Nil>) {
         std::terminate();
       } else {
         return invoke(mat, tail.get_head(), tail.get_tail());
@@ -322,8 +326,7 @@ class Match {
   const T mat;
 
  public:
-  Match(const T& mat_) : mat{mat_} {}
-  Match(const T&& mat_) : mat{std::move(mat_)} {}
+  Match(T mat_) : mat{mat_} {}
 
   template <typename Arm, typename... Arms>
   decltype(auto) operator()(Arm&& arm, Arms&&... arms) const {
@@ -346,8 +349,8 @@ class Match {
 }  // namespace detail
 
 template <typename T>
-inline detail::Match<T> match(const T&& mat) {
-  return detail::Match(std::forward<const T>(mat));
+inline detail::Match<T> match(T&& mat) {
+  return detail::Match<T>(std::forward<T>(mat));
 }
 
 inline detail::Match<std::string> match(const char* str) {

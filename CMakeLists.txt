@@ -30,3 +30,5 @@ endmacro()
 
 add_test_target(integral)
 add_test_target(string)
+add_test_target(destructure)
+add_test_target(variant)

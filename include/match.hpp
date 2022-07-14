@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <concepts>
 #include <exception>
 #include <functional>
@@ -45,11 +46,14 @@ inline detail::Variant<T> var = detail::Variant<T>();
 
 namespace detail {
 
-template <typename P, typename F>
+template <typename, typename>
 class Arm;
 
-template <typename F, typename... Ts>
+template <typename, typename...>
 class DsArm;
+
+template <typename, typename>
+class AltArm;
 
 template <typename T>
 class Pattern {
@@ -153,6 +157,34 @@ public:
     }
 };
 
+class Nil {};
+
+template <typename P, typename T>
+class AltPattern {
+    const P& pat;
+    const T& tail;
+public:
+    AltPattern(const P& pat_, const T& tail_) : pat{pat_}, tail{tail_} {}
+
+    const P& get_head() const { return pat; }
+    const T& get_tail() const { return tail; }
+
+    template <typename U>
+    decltype(auto) operator|(const Pattern<U>& p) {
+        return AltPattern(p, *this);
+    }
+
+    template <typename F>
+    decltype(auto) operator=(F&& f) const {
+        return AltArm(*this, std::forward<F>(f));
+    }
+};
+
+template <typename T1, typename T2>
+decltype(auto) operator|(const Pattern<T1>& p1, const Pattern<T2>& p2) {
+    return AltPattern(p2, AltPattern(p1, Nil()));
+} 
+
 }
 
 template <typename T>
@@ -228,6 +260,51 @@ public:
     template <typename T>
     decltype(auto) operator()(const T& mat) const {
         return ds_bind<0, std::tuple<Ts...>, T, F>(mat, f)();
+    }
+};
+
+template <typename P, typename F>
+class AltArm {
+    const P& altp;
+    F f;
+
+    template <typename U, typename H, typename T>
+    bool altp_matches(const U& mat, const H& head, const T& tail) const {
+        if (head.matches(mat)) {
+            return true;
+        } else {
+            if constexpr (std::is_same_v<T, Nil>) {
+                return false;
+            } else {
+                return altp_matches(mat, tail.get_head(), tail.get_tail());
+            }
+        }
+    }
+
+    template <typename U, typename H, typename T>
+    decltype(auto) invoke(const U& mat, const H& head, const T& tail) const {
+        if (head.matches(mat)) {
+            return (head=f)(mat);
+        } else {
+            if constexpr (std::is_same_v<T, Nil>) {
+                std::terminate();
+            } else {
+                return invoke(mat, tail.get_head(), tail.get_tail());
+            }
+        }
+    }
+
+public:
+    AltArm(const P& altp_, F&& f_) : altp{altp_}, f{f_} {}
+
+    template <typename U>
+    bool matches(const U& mat) const {
+        return altp_matches(mat, altp.get_head(), altp.get_tail());
+    }
+
+    template <typename U>
+    decltype(auto) operator()(const U& mat) const {
+        return invoke(mat, altp.get_head(), altp.get_tail());
     }
 };
 

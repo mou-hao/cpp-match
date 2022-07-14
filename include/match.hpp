@@ -28,6 +28,7 @@ class Destructure {
 
  public:
   Destructure(Ts... ts_) : ts{ts_...} {}
+  Destructure(Ts&&... ts_) : ts{std::move(ts_)...} {}
   std::tuple<Ts...>& get_tuple() { return ts; };
 };
 
@@ -40,7 +41,7 @@ const detail::Wildcard _ = detail::Wildcard();
 const detail::Capture cpt = detail::Capture();
 
 template <typename... Ts>
-inline detail::Destructure<Ts...> ds(Ts... ts) {
+inline detail::Destructure<Ts...> ds(Ts&&... ts) {
   return detail::Destructure(std::forward<Ts>(ts)...);
 }
 
@@ -175,8 +176,8 @@ class AltPattern {
   const T& get_tail() const { return tail; }
 
   template <typename U>
-  decltype(auto) operator|(const Pattern<U>& p) {
-    return AltPattern(p, *this);
+  decltype(auto) operator|(const Pattern<U>& p) const {
+    return AltPattern<Pattern<U>, decltype(*this)>(p, *this);
   }
 
   template <typename F>
@@ -193,7 +194,7 @@ decltype(auto) operator|(const Pattern<T1>& p1, const Pattern<T2>& p2) {
 }  // namespace detail
 
 template <typename T>
-inline detail::Pattern<T> pattern(const T& expr) {
+inline detail::Pattern<T> pattern(const T&& expr) {
   return detail::Pattern(std::forward<const T>(expr));
 }
 
@@ -318,10 +319,11 @@ class AltArm {
 
 template <typename T>
 class Match {
-  const T& mat;
+  const T mat;
 
  public:
   Match(const T& mat_) : mat{mat_} {}
+  Match(const T&& mat_) : mat{std::move(mat_)} {}
 
   template <typename Arm, typename... Arms>
   decltype(auto) operator()(Arm&& arm, Arms&&... arms) const {
@@ -344,7 +346,7 @@ class Match {
 }  // namespace detail
 
 template <typename T>
-inline detail::Match<T> match(const T& mat) {
+inline detail::Match<T> match(const T&& mat) {
   return detail::Match(std::forward<const T>(mat));
 }
 

@@ -29,3 +29,4 @@ macro(add_test_target target_name)
 endmacro()
 
 add_test_target(integral)
+add_test_target(string)

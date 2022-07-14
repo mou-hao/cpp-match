@@ -60,3 +60,11 @@ TEST(IntegralTest, AltPattern) {
       pattern(2) = []() {});
   }, int);
 }
+
+TEST(IntegralTest, CharType) {
+  EXPECT_THROW({
+    match('a') (
+      pattern(0) = []() {},
+      pattern('b'-1) = []() { throw 1; });
+  }, int);
+}

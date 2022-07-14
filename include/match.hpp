@@ -11,7 +11,7 @@
 namespace mat {
 
 namespace exceptions {
-    struct NoMatch {};
+    struct NonVoidNoMatch {};
 }
 
 namespace detail {
@@ -243,7 +243,11 @@ public:
             return arm(mat);
         } else {
             if constexpr (sizeof...(arms) == 0) {
-                throw exceptions::NoMatch();
+                if constexpr (std::is_same_v<decltype(arm(mat)), void>) {
+                    return;
+                } else {
+                    throw exceptions::NonVoidNoMatch();
+                }
             } else {
                 return operator()(std::forward<Arms>(arms)...);
             }

@@ -7,6 +7,7 @@
 #include <string>
 #include <tuple>
 #include <type_traits>
+#include <utility>
 #include <variant>
 
 namespace mat {
@@ -60,7 +61,7 @@ class AltArm;
 
 template <typename T>
 class Pattern {
-  const T expr;
+  T expr;
 
  public:
   Pattern(T expr_) : expr{expr_} {}
@@ -116,8 +117,10 @@ class Pattern<Destructure<Ts...>> {
   bool tup_comp(const T1& t1, const T2& t2, bool accum) const {
     if (!accum) return false;
     if constexpr (I < std::tuple_size_v<T1>) {
-      if constexpr (std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>, Wildcard> ||
-                    std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>, Capture>) {
+      if constexpr (std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>,
+                                   Wildcard> ||
+                    std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>,
+                                   Capture>) {
         return tup_comp<I + 1, T1, T2>(t1, t2, accum);
       } else {
         return tup_comp<I + 1, T1, T2>(t1, t2,
@@ -164,30 +167,42 @@ class Pattern<Variant<T>> {
 class Nil {};
 
 template <typename P, typename T>
-class AltPattern {
-  const P& pat;
-  const T& tail;
+struct AltPattern {
+  P pat;
+  T tail;
 
- public:
-  AltPattern(const P& pat_, const T& tail_) : pat{pat_}, tail{tail_} {}
+  AltPattern(P&& pat_, T&& tail_) : pat{pat_}, tail{tail_} {}
 
   const P& get_head() const { return pat; }
   const T& get_tail() const { return tail; }
 
   template <typename U>
-  decltype(auto) operator|(const Pattern<U>& p) const {
-    return AltPattern<Pattern<U>, decltype(*this)>(p, *this);
+  decltype(auto) operator|(Pattern<U>&& p) {
+    return AltPattern<Pattern<U>, std::decay_t<decltype(*this)>>(
+        std::forward<Pattern<U>>(p), std::move(*this));
+  }
+
+  template <typename U, typename T1, typename T2>
+  decltype(auto) reverse(AltPattern<T1, T2>&& altp, U&& accum) {
+    auto new_accum =
+        AltPattern<T1, U>(std::move(altp.pat), std::forward<U>(accum));
+    if constexpr (std::is_same_v<std::decay_t<T2>, Nil>) {
+      return new_accum;
+    } else {
+      return reverse(std::move(altp.tail), std::move(new_accum));
+    }
   }
 
   template <typename F>
-  decltype(auto) operator=(F&& f) const {
-    return AltArm(*this, std::forward<F>(f));
+  decltype(auto) operator=(F&& f) {
+    return AltArm(reverse(std::move(*this), Nil{}), std::forward<F>(f));
   }
 };
 
 template <typename T1, typename T2>
-decltype(auto) operator|(const Pattern<T1>& p1, const Pattern<T2>& p2) {
-  return AltPattern(p2, AltPattern(p1, Nil()));
+decltype(auto) operator|(Pattern<T1>&& p1, Pattern<T2>&& p2) {
+  return AltPattern(std::forward<Pattern<T2>>(p2),
+                    AltPattern(std::forward<Pattern<T1>>(p1), Nil{}));
 }
 
 }  // namespace detail
@@ -256,7 +271,8 @@ class DsArm : public ArmBase<Pattern<Destructure<Ts...>>> {
   template <std::size_t I, typename T1, typename T2, typename L>
   decltype(auto) ds_bind(const T2& t2, L l) const {
     if constexpr (I < std::tuple_size_v<T1>) {
-      if constexpr (std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>, Capture>) {
+      if constexpr (std::is_same_v<std::decay_t<std::tuple_element_t<I, T1>>,
+                                   Capture>) {
         auto newl = std::bind_front(l, std::get<I>(t2));
         return ds_bind<I + 1, T1, T2, decltype(newl)>(t2, newl);
       } else {
@@ -278,7 +294,7 @@ class DsArm : public ArmBase<Pattern<Destructure<Ts...>>> {
 
 template <typename P, typename F>
 class AltArm {
-  const P& altp;
+  P altp;
   F f;
 
   template <typename U, typename H, typename T>
@@ -308,7 +324,7 @@ class AltArm {
   }
 
  public:
-  AltArm(const P& altp_, F&& f_) : altp{altp_}, f{f_} {}
+  AltArm(P&& altp_, F&& f_) : altp{altp_}, f{f_} {}
 
   template <typename U>
   bool matches(const U& mat) const {

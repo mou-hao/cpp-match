@@ -153,7 +153,7 @@ int main() {
 ### Alternative Pattern
 An _alternative pattern_ matches if any of the patterns in it matches.
 Whether the alternative pattern passes any value to the labmda
-on the right hand side depends on the first from left-to-right that matches.
+on the right hand side depends on the first pattern from left to right that matches.
 
 #### Requirements
 Depends on the patterns you specify.
@@ -173,6 +173,9 @@ int factorial(int n) {
 
 
 ## Build and Test
+
+Pattern matching itself is header only.
+The below instructions are for building and running the tests.
 
 ### Requirements
 
